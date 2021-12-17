@@ -136,11 +136,10 @@ namespace GitHub.Runner.Worker
             }
             executionContext.Output("##[endgroup]");
 
-            // Create local docker network for this job to avoid port conflict when multiple runners run on same machine.
-            // All containers within a job join the same network
-            executionContext.Output("##[group]Create local container network");
-            var containerNetwork = $"github_network_{Guid.NewGuid().ToString("N")}";
-            await CreateContainerNetworkAsync(executionContext, containerNetwork);
+            // Configure the container to use the docker host network
+            // N.B. This is only intended for use on GKE/ephemeral runners
+            executionContext.Output("##[group]Configure container to use host network");
+            var containerNetwork = "host";
             executionContext.JobContext.Container["network"] = new StringContextData(containerNetwork);
             executionContext.Output("##[endgroup]");
 
@@ -170,8 +169,6 @@ namespace GitHub.Runner.Worker
             {
                 await StopContainerAsync(executionContext, container);
             }
-            // Remove the container network
-            await RemoveContainerNetworkAsync(executionContext, containers.First().ContainerNetwork);
         }
 
         private async Task StartContainerAsync(IExecutionContext executionContext, ContainerInfo container)
@@ -404,21 +401,6 @@ namespace GitHub.Runner.Worker
             if (networkExitCode != 0)
             {
                 throw new InvalidOperationException($"Docker network create failed with exit code {networkExitCode}");
-            }
-        }
-
-        private async Task RemoveContainerNetworkAsync(IExecutionContext executionContext, string network)
-        {
-            Trace.Entering();
-            ArgUtil.NotNull(executionContext, nameof(executionContext));
-            ArgUtil.NotNull(network, nameof(network));
-
-            executionContext.Output($"Remove container network: {network}");
-
-            int removeExitCode = await _dockerManager.DockerNetworkRemove(executionContext, network);
-            if (removeExitCode != 0)
-            {
-                executionContext.Warning($"Docker network rm failed with exit code {removeExitCode}");
             }
         }
 
