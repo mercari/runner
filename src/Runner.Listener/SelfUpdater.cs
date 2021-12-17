@@ -111,7 +111,35 @@ namespace GitHub.Runner.Listener
 
         private async Task<bool> UpdateNeeded(string targetVersion, CancellationToken token)
         {
-            return false;
+            // when talk to old version server, always prefer latest package.
+            // old server won't send target version as part of update message.
+            if (string.IsNullOrEmpty(targetVersion))
+            {
+                var packages = await _runnerServer.GetPackagesAsync(_packageType, _platform, 1, true, token);
+                if (packages == null || packages.Count == 0)
+                {
+                    Trace.Info($"There is no package for {_packageType} and {_platform}.");
+                    return false;
+                }
+
+                _targetPackage = packages.FirstOrDefault();
+            }
+            else
+            {
+                _targetPackage = await _runnerServer.GetPackageAsync(_packageType, _platform, targetVersion, true, token);
+                if (_targetPackage == null)
+                {
+                    Trace.Info($"There is no package for {_packageType} and {_platform} with version {targetVersion}.");
+                    return false;
+                }
+            }
+
+            Trace.Info($"Version '{_targetPackage.Version}' of '{_targetPackage.Type}' package available in server.");
+            PackageVersion serverVersion = new PackageVersion(_targetPackage.Version);
+            Trace.Info($"Current running runner version is {BuildConstants.RunnerPackage.Version}");
+            PackageVersion runnerVersion = new PackageVersion(BuildConstants.RunnerPackage.Version);
+
+            return serverVersion.CompareTo(runnerVersion) > 0;
         }
 
         /// <summary>
