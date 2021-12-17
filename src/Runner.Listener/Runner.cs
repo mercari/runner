@@ -403,18 +403,8 @@ namespace GitHub.Runner.Listener
                             HostContext.WritePerfCounter($"MessageReceived_{message.MessageType}");
                             if (string.Equals(message.MessageType, AgentRefreshMessage.MessageType, StringComparison.OrdinalIgnoreCase))
                             {
-                                if (autoUpdateInProgress == false)
-                                {
-                                    autoUpdateInProgress = true;
-                                    var runnerUpdateMessage = JsonUtility.FromString<AgentRefreshMessage>(message.Body);
-                                    var selfUpdater = HostContext.GetService<ISelfUpdater>();
-                                    selfUpdateTask = selfUpdater.SelfUpdate(runnerUpdateMessage, jobDispatcher, !runOnce && HostContext.StartupType != StartupType.Service, HostContext.RunnerShutdownToken);
-                                    Trace.Info("Refresh message received, kick-off selfupdate background process.");
-                                }
-                                else
-                                {
-                                    Trace.Info("Refresh message received, skip autoupdate since a previous autoupdate is already running.");
-                                }
+                                // TODO: Can we implement some sort of refresh system for our own runner releases?
+                                Trace.Info("Refresh message received, but updates are disabled. Doing nothing.");
                             }
                             else if (string.Equals(message.MessageType, JobRequestMessageTypes.PipelineAgentJobRequest, StringComparison.OrdinalIgnoreCase))
                             {

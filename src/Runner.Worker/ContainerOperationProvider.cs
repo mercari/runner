@@ -55,12 +55,14 @@ namespace GitHub.Runner.Worker
             // Our container feature requires to map working directory from host to the container.
             // If we are already inside a container, we will not able to find out the real working direcotry path on the host.
 #if OS_WINDOWS
+#pragma warning disable CA1416
             // service CExecSvc is Container Execution Agent.
             ServiceController[] scServices = ServiceController.GetServices();
             if (scServices.Any(x => String.Equals(x.ServiceName, "cexecsvc", StringComparison.OrdinalIgnoreCase) && x.Status == ServiceControllerStatus.Running))
             {
                 throw new NotSupportedException("Container feature is not supported when runner is already running inside container.");
             }
+#pragma warning restore CA1416
 #else
             var initProcessCgroup = File.ReadLines("/proc/1/cgroup");
             if (initProcessCgroup.Any(x => x.IndexOf(":/docker/", StringComparison.OrdinalIgnoreCase) >= 0))
@@ -70,6 +72,7 @@ namespace GitHub.Runner.Worker
 #endif
 
 #if OS_WINDOWS
+#pragma warning disable CA1416
             // Check OS version (Windows server 1803 is required)
             object windowsInstallationType = Registry.GetValue(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallationType", defaultValue: null);
             ArgUtil.NotNull(windowsInstallationType, nameof(windowsInstallationType));
@@ -88,6 +91,7 @@ namespace GitHub.Runner.Worker
             {
                 throw new ArgumentOutOfRangeException(@"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ReleaseId");
             }
+#pragma warning restore CA1416
 #endif
 
             // Check docker client/server version
@@ -132,11 +136,10 @@ namespace GitHub.Runner.Worker
             }
             executionContext.Output("##[endgroup]");
 
-            // Create local docker network for this job to avoid port conflict when multiple runners run on same machine.
-            // All containers within a job join the same network
-            executionContext.Output("##[group]Create local container network");
-            var containerNetwork = $"github_network_{Guid.NewGuid().ToString("N")}";
-            await CreateContainerNetworkAsync(executionContext, containerNetwork);
+            // Configure the container to use the docker host network
+            // N.B. This is only intended for use on GKE/ephemeral runners
+            executionContext.Output("##[group]Configure container to use host network");
+            var containerNetwork = "host";
             executionContext.JobContext.Container["network"] = new StringContextData(containerNetwork);
             executionContext.Output("##[endgroup]");
 
@@ -166,8 +169,6 @@ namespace GitHub.Runner.Worker
             {
                 await StopContainerAsync(executionContext, container);
             }
-            // Remove the container network
-            await RemoveContainerNetworkAsync(executionContext, containers.First().ContainerNetwork);
         }
 
         private async Task StartContainerAsync(IExecutionContext executionContext, ContainerInfo container)
@@ -400,21 +401,6 @@ namespace GitHub.Runner.Worker
             if (networkExitCode != 0)
             {
                 throw new InvalidOperationException($"Docker network create failed with exit code {networkExitCode}");
-            }
-        }
-
-        private async Task RemoveContainerNetworkAsync(IExecutionContext executionContext, string network)
-        {
-            Trace.Entering();
-            ArgUtil.NotNull(executionContext, nameof(executionContext));
-            ArgUtil.NotNull(network, nameof(network));
-
-            executionContext.Output($"Remove container network: {network}");
-
-            int removeExitCode = await _dockerManager.DockerNetworkRemove(executionContext, network);
-            if (removeExitCode != 0)
-            {
-                executionContext.Warning($"Docker network rm failed with exit code {removeExitCode}");
             }
         }
 
